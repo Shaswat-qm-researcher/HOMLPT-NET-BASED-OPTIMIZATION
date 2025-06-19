@@ -1,8 +1,8 @@
 # Python Environment Setup for Machine Learning Project
 
-This repository contains an environment setup using Conda to ensure reproducibility and compatibility across systems. The environment includes TensorFlow, Scikit-learn, NumPy, Pandas, Matplotlib, and Joblib.
+This folder contains an environment setup Python using Conda to ensure reproducibility and compatibility across systems. The environment includes TensorFlow, Scikit-learn, NumPy, Pandas, Matplotlib, and Joblib.
 
-## 📦 Environment Details
+## Environment Details
 
 - **Python version**: 3.12.9 (via Anaconda)
 - **TensorFlow**: 2.19.0
@@ -13,11 +13,11 @@ This repository contains an environment setup using Conda to ensure reproducibil
 - **Matplotlib**: 3.10.1
 - **Joblib**: 1.4.2
 
-## 🛠️ Setup Instructions
+## Setup Instructions
 
-### ✅ Step 1: Install [Anaconda](https://www.anaconda.com/products/distribution) if not already installed.
+### Step 1: Install [Anaconda](https://www.anaconda.com/products/distribution) if not already installed.
 
-### ✅ Step 2: Create the Environment
+### Step 2: Create the Environment
 
 Open a terminal (or Anaconda Prompt on Windows) and run:
 
@@ -25,13 +25,13 @@ Open a terminal (or Anaconda Prompt on Windows) and run:
 conda env create -f environment.yml
 ```
 
-### ✅ Step 3: Activate the Environment
+### Step 3: Activate the Environment
 
 ```bash
 conda activate myenv
 ```
 
-## 🔎 Verify the Installation
+## Verify the Installation
 
 Run the following command to check Python and package versions:
 
@@ -41,12 +41,12 @@ python -c "import tensorflow as tf; print('TensorFlow:', tf.__version__)"
 python -c "import sklearn; print('Scikit-learn:', sklearn.__version__)"
 ```
 
-## 📁 Files
+## Files
 
 - `environment.yml` — Conda environment definition file.
 - `requirements.txt` — Optional: pip-based installation if using virtualenv instead of Conda.
 
-## 📌 Note
+## Note
 
 Using Conda ensures exact Python version compatibility, especially useful when working with packages like TensorFlow or compiling on specific architectures.
 
