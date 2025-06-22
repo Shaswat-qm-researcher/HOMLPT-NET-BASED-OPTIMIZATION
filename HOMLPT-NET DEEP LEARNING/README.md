@@ -21,6 +21,28 @@ This framework incorporates:
 - Visual summaries of model accuracy and training behavior
 
 ---
+## Dataset Description: HP_TRAINING_DATA
+
+This dataset is used for training a HOMLPT-NET Deep Learning model to predict GPU temperature and manufacturing cost based on thermal and geometric design parameters of a cooling system.
+
+### Input Parameters
+
+- FL: Flow length of the heat pipe (mm)
+- EC: Effective thermal conductivity of the heat pipe (W/m·K)
+- DA: Diameter of the source heat pipes (mm)
+- FINL: Heat sink fin length (mm)
+- BP1: Blower positioning 1
+- BP3: Blower positioning 3
+
+### Output Parameters
+
+- GPU TEMP: Maximum GPU temperature during operation (°C)
+- COST: Manufacturing cost of the cooling system (INR)
+
+This data is stored in an Excel file named `HP_TRAINING_DATA.xlsx` and is intended for use in deep learning-based multi-objective regression analysis.
+
+---
+
 ## Key Modules and Functionality
 
 ### 1. Library Imports
