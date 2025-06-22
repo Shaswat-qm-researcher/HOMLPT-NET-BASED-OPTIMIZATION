@@ -20,7 +20,6 @@ This framework incorporates:
 - Result saving (Excels, figures, scalers, model weights)
 - Visual summaries of model accuracy and training behavior
 
----
 ## Dataset Description: HP_TRAINING_DATA
 
 This dataset is used for training a HOMLPT-NET Deep Learning model to predict GPU temperature and manufacturing cost based on thermal and geometric design parameters of a cooling system.
