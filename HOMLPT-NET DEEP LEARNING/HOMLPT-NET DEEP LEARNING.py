@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
+from matplotlib.ticker import AutoMinorLocator
 from sklearn.metrics import make_scorer, r2_score, root_mean_squared_error, mean_absolute_error, mean_squared_error, explained_variance_score
 from sklearn.base import BaseEstimator, RegressorMixin, clone
 import joblib
@@ -29,6 +30,7 @@ import sys
 from tensorflow.keras import layers, Model, Input
 from tensorflow.keras import layers, models, regularizers, callbacks, optimizers
 from tensorflow.keras.callbacks import EarlyStopping
+import json
 
 max_processors = os.cpu_count()
 
@@ -103,11 +105,11 @@ def load_data(file_path):
 
     # Ask if user wants to drop any columns
     drop_choice = input("\nDo you want to drop any columns before selecting inputs/outputs? (y/n): ").strip().lower()
-    while drop_choice not in ['y', 'n']:
+    while drop_choice not in ['y','yes','Y','YES','Yes', 'n', 'No','NO', 'no']:
         print(f"{RED_TEXT}Invalid input. Please enter 'y' or 'n'.{RESET_TEXT}")
         drop_choice = input("Do you want to drop any columns? (y/n): ").strip().lower()
 
-    if drop_choice == 'y':
+    if drop_choice == 'y' or drop_choice == 'yes' or drop_choice == 'Y' or drop_choice == 'YES' or drop_choice == 'Yes':
         while True:
             try:
                 num_cols_to_drop = int(input("How many columns do you want to drop (e.g., 1, 2, 3 .... more): ").strip())
@@ -118,15 +120,19 @@ def load_data(file_path):
                 print(f"{RED_TEXT}Invalid input. Please enter a positive integer.{RESET_TEXT}")
 
         cols_to_drop = []
-        for i in range(num_cols_to_drop):
-            while True:
-                col_name = input(f"Enter the name of column {i+1} to drop: ").strip()
-                if col_name in df.columns:
-                    cols_to_drop.append(col_name)
-                    break
-                else:
-                    print(f"{RED_TEXT}Error: Column '{col_name}' not found. Please enter a valid column name.{RESET_TEXT}")
+        while True:
+            cols_to_drop = input("\nEnter the column names to drop (separated by commas): ").strip().split(",")
+            # Strip spaces around each column name
+            cols_to_drop = [col.strip() for col in cols_to_drop]
 
+            # Check for invalid columns
+            invalid_cols = [col for col in cols_to_drop if col not in df.columns]
+            if invalid_cols:
+                print(f"{RED_TEXT}Error: The following columns were not found: {', '.join(invalid_cols)}{RESET_TEXT}")
+                print("Please enter valid column names from the list above.")
+            else:
+                break
+                
         df.drop(columns=cols_to_drop, inplace=True)
         print(f"{GREEN_TEXT}Successfully dropped columns: {cols_to_drop}{RESET_TEXT}")
 
@@ -457,11 +463,11 @@ while True:
                 while True:
                     while True:
                         cont = input("Do you want to add another layer? (y/n): ").strip().lower()
-                        if cont not in ['y', 'n']:
+                        if cont not in ['y','yes','Y','YES','Yes', 'n', 'No','NO', 'no']:
                             print(f"{RED_TEXT}Invalid input. Please enter 'y' or 'n'.{RESET_TEXT}")
                         else:
                             break
-                    if cont == 'n':
+                    if cont == 'n'or cont == 'No' or cont == 'NO' or cont == 'no':
                         break
                     while True:
                         layer = get_integer_input("Enter number of neurons for the layer: ", 4, 4096)
@@ -479,7 +485,7 @@ while True:
         LEARNING_RATE = get_float_input("Enter the learning rate", 0.00001, 0.5, preferred_val=0.01)
         NUM_EPOCHS = get_integer_input("Enter the number of epochs (iterations)", 50, 1000, preferred_val=100)
         BATCH_SIZE = get_integer_input("Enter the batch size", 2, 512, preferred_val=2)
-        RANDOM_STATE = get_integer_input("Enter the random state", preferred_val=42)
+        RANDOM_STATE = get_integer_input("Enter the random state",2,314, preferred_val=42)
         
         # Finalize hidden layers based on user input.
         HIDDEN_LAYERS = get_hidden_layers()
@@ -623,7 +629,7 @@ while True:
         # Model Setup for MLP regressor.
         ##############################################
         
-        model_1 = TrackedMLP(random_state = RANDOM_STATE, early_stopping=False)
+        model_1 = TrackedMLP(random_state = RANDOM_STATE, early_stopping=True)
         
         ##############################################
         # Performing Grid Search CV for each block.
@@ -674,10 +680,10 @@ while True:
         # Overfitting threshold 
         overfit_threshold = 0.07
 
-        results_df['train_test_gap'] = results_df['mean_train_R2'] - results_df['mean_test_R2']
+        results_df['train_test_gap'] = (results_df['mean_train_R2'] - results_df['mean_test_R2']).abs()
 
         # Filter non-overfitted results
-        filtered_results_df = results_df[results_df['train_test_gap'] <= overfit_threshold]
+        filtered_results_df = results_df[results_df['train_test_gap'] < overfit_threshold]
 
         if filtered_results_df.empty:
             print("All models appear overfitted. Using original best model from GridSearchCV.")
@@ -768,8 +774,28 @@ while True:
         
         end_time_total_MLP = time.time()
         elapsed_time_total_MLP = end_time_total_MLP - start_time_total_MLP
+        
+        # Combine training and test results
+        train_df = pd.DataFrame({
+            'Actual_Train': y_actual_train_orig_MLP.flatten(),
+            'Predicted_Train': y_predicted_train_orig_MLP.flatten()
+        })
+
+        test_df = pd.DataFrame({
+            'Actual_Test': y_actual_test_orig_MLP.flatten(),
+            'Predicted_Test': y_predicted_test_orig_MLP.flatten()
+        })
+
+        # Save to Excel with two sheets
+        excel_path = os.path.join(save_file_path, savename + '_MLP_Actual_vs_Predicted_Data.xlsx')
+        with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+            train_df.to_excel(writer, sheet_name='Train', index=False)
+            test_df.to_excel(writer, sheet_name='Test', index=False)
+
+        print(f"Saved train/test Actual vs Predicted values to {excel_path}")
+
         # Ploting actual vs train graphs for MLP and dynamically compute figure size.
-        plt.figure(figsize=(8, 5))
+        plt.figure(figsize=(8.5, 5))
 
         # Adjust sizes dynamically
         total_points = n_train_MLP + n_test_MLP
@@ -787,20 +813,20 @@ while True:
         plt.plot([min(y), max(y)], [min(y), max(y)], color='black', alpha=0.8, linestyle='--', linewidth='1.3', label=fr'Actual Values')    
    
         
-        plt.annotate(fr'R$^2$ Score (Train): {R2_score_train_MLP:.5f}', (0.015, 0.75), 
-                     fontsize=9.5, xycoords='axes fraction')
-        plt.annotate(fr'R$^2$ Score (Test): {R2_score_test_MLP:.5f}', (0.015, 0.70), 
-                     fontsize=9.5, xycoords='axes fraction')
-        plt.annotate(fr'Quantile loss (Train): {quantile_loss_train_MLP:.2e} {Unit} (Test): {quantile_loss_test_MLP:.2e} {Unit}', 
-             (0.015, 0.95), fontsize=9.5,  xycoords='axes fraction')
-        plt.annotate(fr'Huber loss (Train): {huber_loss_train_MLP:.2e} {Unit} (Test): {huber_loss_test_MLP:.2e} {Unit}', 
-             (0.015, 0.90), fontsize=9.5,  xycoords='axes fraction')
-        plt.annotate(fr'RMSE (Train): {rmse_train_MLP:.2e} {Unit} (Test): {rmse_test_MLP:.2e} {Unit}', 
-             (0.015, 0.85), fontsize=9.5,  xycoords='axes fraction')
-        plt.annotate(fr'$L_c$ (Train): {custom_loss_train_MLP:.2e} {Unit} (Test): {custom_loss_test_MLP:.2e} {Unit}', 
-             (0.015, 0.80), fontsize=9.5,  xycoords='axes fraction')
+        plt.annotate(fr'R$^2$ Score (Train): {R2_score_train_MLP:.5f}', (0.03, 0.73), 
+                     fontsize=11.5, xycoords='axes fraction')
+        plt.annotate(fr'R$^2$ Score (Test): {R2_score_test_MLP:.5f}', (0.03, 0.68), 
+                     fontsize=11.5, xycoords='axes fraction')
+        plt.annotate(fr'Quantile loss (Train): {quantile_loss_train_MLP:.2e}  (Test): {quantile_loss_test_MLP:.2e}', 
+             (0.03, 0.93), fontsize=11.5,  xycoords='axes fraction')
+        plt.annotate(fr'Huber loss (Train): {huber_loss_train_MLP:.2e}  (Test): {huber_loss_test_MLP:.2e}', 
+             (0.03, 0.88), fontsize=11.5,  xycoords='axes fraction')
+        plt.annotate(fr'RMSE (Train): {rmse_train_MLP:.2e}  (Test): {rmse_test_MLP:.2e}', 
+             (0.03, 0.83), fontsize=11.5,  xycoords='axes fraction')
+        plt.annotate(fr'$L_c$ (Train): {custom_loss_train_MLP:.2e}  (Test): {custom_loss_test_MLP:.2e}', 
+             (0.03, 0.78), fontsize=11.5,  xycoords='axes fraction')
         
-        box_props = dict(boxstyle='round,pad=0.4', edgecolor='black', facecolor='white', alpha=0.1)
+        box_props = dict(boxstyle='round,pad=0.4', edgecolor='black', facecolor='white', alpha=1)
         textstr = '\n'.join((
             fr'MLP Hyperparameters',
             fr'',
@@ -818,20 +844,30 @@ while True:
             fr'Inference time (Test): {elapsed_time_3_MLP:.3f} s',
             fr'Total time taken: {elapsed_time_total_MLP:.3f} s'
             ))
-        plt.annotate(textstr, (1.03, 0.20), fontsize=10, xycoords='axes fraction', bbox=box_props)
+        plt.annotate(textstr, (1.03, 0.20), fontsize=10, xycoords='axes fraction', bbox=box_props, color='black')
         
         
-        plt.xlabel(fr'Actual Values ({y.name})', fontsize=16, fontweight='bold')
-        plt.ylabel(f'Predicted Values ({y.name})', fontsize=16, fontweight='bold')
-        plt.title(fr'{y.name} predictions from MLP', fontsize=14, fontweight='bold')
+        plt.xlabel(fr'Actual Values ({y.name} [{Unit}])', fontsize=16)
+        plt.ylabel(f'Predicted Values ({y.name} [{Unit}])', fontsize=16)
+        #plt.title(fr'{y.name} predictions from MLP', fontsize=14, fontweight='bold')
         plt.xticks(fontsize=14)
         plt.yticks(fontsize=14)
-        plt.legend(loc='lower right', fontsize=12)
+
+        plt.tick_params(axis='both', which='both', direction='in', labelsize=17, length=8,
+               top=True, bottom=True, left=True, right=True, width=1.5)
+        plt.tick_params(axis='both', which='minor', direction='in',
+               length=4, width=1.5, top=True, bottom=True, left=True, right=True)
+        ax = plt.gca()  # get current axes
+        ax.minorticks_on()
+        ax.xaxis.set_minor_locator(AutoMinorLocator(10))
+        ax.yaxis.set_minor_locator(AutoMinorLocator(7))
+    
+        plt.legend(loc='lower right', fontsize=12, facecolor='white', edgecolor='black', frameon=True, bbox_to_anchor=(0.97, 0.03))
         plt.grid(False)       
         plt.tight_layout()
         
         # Saving the figure 
-        plt.savefig(os.path.join(save_file_path, savename + '_MLP_Actual_vs_Prediceted_Data.jpg'), dpi=400)
+        plt.savefig(os.path.join(save_file_path, savename + '_MLP_Actual_vs_Prediceted_Data.jpg'), dpi=800)
 
         
         # Plot each metric over the course of the iterations (changing hyperparameters).
@@ -841,7 +877,7 @@ while True:
         metric_labels = ['Huber Loss','Quantile Loss', 'Root Mean Squared Error (RMSE)', '$R^2$ Score', 'Custom Loss ($L_c$)']
         metric_labels_1 = ['Huber Loss', 'Quantile Loss', 'RMSE', '$R^2$ Score', '$L_c$'] 
         metric_labels_2 = ['Huber Loss','Quantile Loss', 'RMS Error', 'R2 Score', 'Custom Loss']
-        colors = ['lime', 'blue', '#FF4500', 'magenta', 'darkgreen']
+        colors = ['lime', 'blue', 'orange', 'magenta', 'red']
         
         markers = ['o', 'o', 'o', 'o', 'o'] 
         higher_is_better = [False, False, False, True, True]
@@ -882,7 +918,7 @@ while True:
 
             # Plotting
             plt.plot(results_df.index + 1, results_df[metric],
-                     marker=marker, linestyle='-.', linewidth=line_width_test, alpha=0.35,
+                     marker=marker, linestyle='-.', linewidth=line_width_test,
                      markersize=marker_size, markeredgecolor='black', markeredgewidth=marker_edge_width,
                      markerfacecolor=color, color='black', label='test', zorder=1)
 
@@ -911,16 +947,16 @@ while True:
 
             # Legend
             if metric_1 in ['Huber loss', 'Quantile loss', 'RMSE']:
-                legend_loc = 'upper right'
-            elif metric_1 in ['R2', 'Custom_Loss']:
                 legend_loc = 'lower right'
+            elif metric_1 in ['R2', 'Custom_Loss']:
+                legend_loc = 'upper right'
 
             # Plot legend
             plt.legend(
                 [f"{'Test'}", f"{'Train'}", f"Best {label_1}: {best_value:.4f}"],
                 loc=legend_loc,
                 fontsize=legend_fontsize,
-                facecolor='white'
+                facecolor='white', edgecolor='black'
             )
             
             # Annotation box
@@ -928,14 +964,14 @@ while True:
                 boxstyle=f'round,pad={0.5 * scale_factor:.2f}',
                 edgecolor='black',
                 facecolor='white',
-                alpha=0.25
+                alpha=1
             )
             if metric_1 in ['Huber loss', 'Quantile loss', 'RMSE']:
-                ann_xy = (0.02, 0.97)  
-                ann_va = 'top'
+                ann_xy = (0.02, 0.03)#(0.02, 0.97)  
+                ann_va = 'bottom'#'top'
             elif metric_1 in ['R2', 'Custom_Loss']:
-                ann_xy = (0.02, 0.03)  
-                ann_va = 'bottom'
+                ann_xy = (0.02, 0.97)   #(0.02, 0.03)  
+                ann_va = 'top'#'bottom'
             
             textstr = '\n'.join((
                 fr'Best Hyperparameters ({label_1})',
@@ -953,13 +989,37 @@ while True:
                 xycoords='axes fraction',
                 bbox=box_props,
                 verticalalignment=ann_va,
-                horizontalalignment='left'
+                horizontalalignment='left',
+                color='black'
             )
-            
 
+            plt.tick_params(axis='both', which='both', direction='in', labelsize=20, length=8,
+                       top=True, bottom=True, left=True, right=True, width=1.5)
+            plt.tick_params(axis='both', which='minor', direction='in',
+                       length=4, width=1.5, top=True, bottom=True, left=True, right=True)
+            ax = plt.gca()  # get current axes
+            ax.minorticks_on()
+            if metric_1 in ['Huber loss', 'Quantile loss']:
+                ax.xaxis.set_minor_locator(AutoMinorLocator(20))
+                ax.yaxis.set_minor_locator(AutoMinorLocator(10))
+            elif metric_1 in ['RMSE']:
+                ax.xaxis.set_minor_locator(AutoMinorLocator(20))
+                ax.yaxis.set_minor_locator(AutoMinorLocator(7))
+            elif metric_1 in ['R2', 'Custom_Loss']:
+                ax.xaxis.set_minor_locator(AutoMinorLocator(20))
+                ax.yaxis.set_minor_locator(AutoMinorLocator(7))
+                
+            if metric_1 in ['Huber loss', 'Quantile loss']:
+                plt.ylim(-0.2,0.3)
+            elif metric_1 in ['RMSE']:
+                plt.ylim(-0.3,0.5)
+            elif metric_1 in ['R2', 'Custom_Loss']:
+                plt.ylim(0,1.5)
+
+            
             # Final layout and save
             plt.tight_layout()
-            plt.savefig(os.path.join(save_file_path, f"{savename}_{saving_name.replace(' ', '_')}.jpg"), dpi=400)
+            plt.savefig(os.path.join(save_file_path, f"{savename}_{saving_name.replace(' ', '_')}.jpg"), dpi=800)
         print("\n")
         
                                
@@ -969,8 +1029,6 @@ while True:
         print(f"{RED_TEXT}Invalid input. Please enter 'manual' or 'auto' to continue.{RESET_TEXT}")
 
 print(f"{GREEN_TEXT} Grid Search completed.{RESET_TEXT}")
-print("\n")
-print(f"{BLUE_TEXT} Starting DNN...{RESET_TEXT}")
 print("\n")
 ################################################################
 # Deep Neural Network model building
@@ -1113,6 +1171,63 @@ def save_results_to_excel(y_actual_train, predicted_train, y_actual_test, predic
     results_test_df.to_excel(os.path.join(save_file_path, f'{savename}_DNN_prediceted_test_data_{target_name}.xlsx'),index=False)
 
 ################################################################
+# Function to Save data for later optimization
+################################################################
+
+def save_model_with_metadata(model, scaler_X, scaler_y, save_file_path, savename, model_name, 
+                             input_features, output_features, X_data, y_data):
+    save_folder = os.path.join(save_file_path, savename)
+    os.makedirs(save_folder, exist_ok=True)
+
+    # Compute min/max directly from data
+    X_min = X_data.min(axis=0).tolist()
+    X_max = X_data.max(axis=0).tolist()
+    y_min = y_data.min(axis=0).tolist() if y_data is not None else None
+    y_max = y_data.max(axis=0).tolist() if y_data is not None else None
+
+    # Save metadata
+    metadata = {
+        "model_name": model_name,
+        "input_features": list(input_features),
+        "output_features": list(output_features),
+        "scaler_X_mean": scaler_X.mean_.tolist(),
+        "scaler_X_scale": scaler_X.scale_.tolist(),
+        "scaler_y_mean": scaler_y.mean_.tolist() if hasattr(scaler_y, "mean_") else None,
+        "scaler_y_scale": scaler_y.scale_.tolist() if hasattr(scaler_y, "scale_") else None,
+        "scaler_X_min": X_min,
+        "scaler_X_max": X_max,
+        "scaler_y_min": y_min,
+        "scaler_y_max": y_max,
+    }
+
+    metadata_path = os.path.join(save_folder, f"{savename}_metadata.json")
+    with open(metadata_path, "w") as f:
+        json.dump(metadata, f, indent=4)
+
+    print(f"Model, scalers, and metadata saved at: {save_folder}")
+    
+def save_metadata_to_excel(save_file_path, savename, metadata_list):
+    
+    excel_path = os.path.join(save_file_path, savename, f"{savename}_model_info.xlsx")
+    
+    # Flatten metadata for Excel
+    rows = []
+    for md in metadata_list:
+        rows.append({
+            "Model Name": md["model_name"],
+            "Input Features": ", ".join(md["input_features"]),
+            "Output Features": ", ".join(md["output_features"]),
+            "Scaler X Min": md["scaler_X_min"],
+            "Scaler X Max": md["scaler_X_max"],
+            "Scaler Y Min": md["scaler_y_min"],
+            "Scaler Y Max": md["scaler_y_max"],
+        })
+    
+    df = pd.DataFrame(rows)
+    df.to_excel(excel_path, index=False)
+    print(f"Metadata saved to Excel: {excel_path}")
+
+################################################################
 # Function for plotting Actual vs Prediction Graph for DNN
 ################################################################
 
@@ -1138,7 +1253,7 @@ def plot_results(elapsed_time_1, elapsed_time_2, elapsed_time_3, elapsed_time_to
 
     # Dynamic figsize logic
    
-    plt.figure(figsize=(8,5))
+    plt.figure(figsize=(8.5,5))
 
     # Adjust sizes dynamically
     total_layers_DNN = n_train + n_test
@@ -1150,12 +1265,12 @@ def plot_results(elapsed_time_1, elapsed_time_2, elapsed_time_3, elapsed_time_to
     # scale_factor_DNN = 1 / np.log10(total_layers_DNN + 10)
     s_size_DNN = 80 * scale_factor_DNN
     # Error metrics and annotations
-    plt.annotate(fr'R$^2$ Score (Train): {R2_score_train_DNN:.5f}', (0.015, 0.75), fontsize=9.5, xycoords='axes fraction')
-    plt.annotate(fr'R$^2$ Score (Test): {R2_score_test_DNN:.5f}', (0.015, 0.70), fontsize=9.5, xycoords='axes fraction')
-    plt.annotate(fr'Quantile loss (Train): {quantile_loss_train_DNN:.2e} {Unit} (Test): {quantile_loss_test_DNN:.2e} {Unit}', (0.015, 0.95), fontsize=9.5, xycoords='axes fraction')
-    plt.annotate(fr'Huber loss (Train): {huber_loss_train_DNN:.2e} {Unit} (Test): {huber_loss_test_DNN:.2e} {Unit}', (0.015, 0.90), fontsize=9.5, xycoords='axes fraction')
-    plt.annotate(fr'RMSE (Train): {rmse_train_DNN:.2e} {Unit} (Test): {rmse_test_DNN:.2e} {Unit}', (0.015, 0.85), fontsize=9.5, xycoords='axes fraction')
-    plt.annotate(fr'$L_c$ (Train): {custom_loss_train_DNN:.2e} (Test): {custom_loss_test_DNN:.2e}', (0.015, 0.80), fontsize=9.5, xycoords='axes fraction')
+    plt.annotate(fr'R$^2$ Score (Train): {R2_score_train_DNN:.5f}', (0.03, 0.73), fontsize=11.5, xycoords='axes fraction')
+    plt.annotate(fr'R$^2$ Score (Test): {R2_score_test_DNN:.5f}', (0.03, 0.68), fontsize=11.5, xycoords='axes fraction')
+    plt.annotate(fr'Quantile loss (Train): {quantile_loss_train_DNN:.2e}  (Test): {quantile_loss_test_DNN:.2e}', (0.03, 0.93), fontsize=11.5, xycoords='axes fraction')
+    plt.annotate(fr'Huber loss (Train): {huber_loss_train_DNN:.2e}  (Test): {huber_loss_test_DNN:.2e}', (0.03, 0.88), fontsize=11.5, xycoords='axes fraction')
+    plt.annotate(fr'RMSE (Train): {rmse_train_DNN:.2e}  (Test): {rmse_test_DNN:.2e}', (0.03, 0.83), fontsize=11.5, xycoords='axes fraction')
+    plt.annotate(fr'$L_c$ (Train): {custom_loss_train_DNN:.2e} (Test): {custom_loss_test_DNN:.2e}', (0.03, 0.78), fontsize=11.5, xycoords='axes fraction')
 
     # Scatter plots
     plt.scatter(y_actual_train_orig.flatten(), y_predicted_train_orig.flatten(), color='royalblue', edgecolor='black', s = s_size_DNN,
@@ -1165,7 +1280,7 @@ def plot_results(elapsed_time_1, elapsed_time_2, elapsed_time_3, elapsed_time_to
     plt.plot([min(y), max(y)], [min(y), max(y)], color='black', alpha=0.8, linestyle='--', linewidth=1.7, label='Actual Values')
 
     # Box with model parameters
-    box_props = dict(boxstyle='round,pad=0.4', edgecolor='black', facecolor='white', alpha=0.1)
+    box_props = dict(boxstyle='round,pad=0.4', edgecolor='black', facecolor='white', alpha=1)
     textstr = '\n'.join((
         'DNN Hyperparameters',
         '',
@@ -1183,19 +1298,28 @@ def plot_results(elapsed_time_1, elapsed_time_2, elapsed_time_3, elapsed_time_to
         fr'Inference time (Test): {elapsed_time_3:.3f} s',
         fr'Total time taken: {elapsed_time_total_DNN:.3f} s'
     ))
-    plt.annotate(textstr, (1.03, 0.20), fontsize=10, xycoords='axes fraction', bbox=box_props)
+    plt.annotate(textstr, (1.03, 0.20), fontsize=10, xycoords='axes fraction', bbox=box_props, color="black")
 
-    plt.xlabel(f'Actual Values ({y.name})', fontsize=16, fontweight='bold')
-    plt.ylabel(f'Predicted Values ({y.name})', fontsize=16, fontweight='bold')
-    plt.title(f'{y.name} predictions from DNN with PReLU activation', fontsize=14, fontweight='bold')
+    plt.xlabel(f'Actual Values ({y.name} [{Unit}])', fontsize=16)
+    plt.ylabel(f'Predicted Values ({y.name} [{Unit}])', fontsize=16)
+    #plt.title(f'{y.name} predictions from DNN with PReLU activation', fontsize=14, fontweight='bold')
     plt.xticks(fontsize=14)
     plt.yticks(fontsize=14)
-    plt.legend(loc='lower right', fontsize=12)
+    plt.tick_params(axis='both', which='both', direction='in', labelsize=17, length=8,
+               top=True, bottom=True, left=True, right=True, width=1.5)
+    plt.tick_params(axis='both', which='minor', direction='in',
+               length=4, width=1.5, top=True, bottom=True, left=True, right=True)
+    ax = plt.gca()  # get current axes
+    ax.minorticks_on()
+    ax.xaxis.set_minor_locator(AutoMinorLocator(10))
+    ax.yaxis.set_minor_locator(AutoMinorLocator(7))
+    
+    plt.legend(loc='lower right', fontsize=12, facecolor='white', edgecolor='black', frameon=True, bbox_to_anchor=(0.97, 0.03))
     plt.grid(False)
     plt.tight_layout()
 
     # Save the figure
-    plt.savefig(os.path.join(save_file_path, savename + '_DNN_Actual_vs_Prediceted_Data.jpg'), dpi=400)
+    plt.savefig(os.path.join(save_file_path, savename + '_DNN_Actual_vs_Prediceted_Data.jpg'), dpi=800)
 
 ################################################################
 # Function to plot the errors with iterations with Adam in DNN
@@ -1214,7 +1338,7 @@ def plot_loss(history, savename):
     indices_train = list(range(0, len(loss_data), points))
     indices_val = list(range(0, len(val_loss_data), points)) if val_loss_data else []
 
-    plt.figure(figsize=(15, 7))
+    plt.figure(figsize=(10, 4.5))
 
     if val_loss_data:
         plt.plot(
@@ -1243,7 +1367,7 @@ def plot_loss(history, savename):
         color='royalblue',
         linewidth=1.5,
         marker='',
-        markersize=12,
+        markersize=8,
         markeredgecolor='purple',
         label=f'Training Loss (Final: {final_train_loss:.3e})'
     )
@@ -1254,28 +1378,124 @@ def plot_loss(history, savename):
         linestyle='',
         color='royalblue',
         marker='o',
-        markersize=10,
+        markersize=8,
         markerfacecolor='white',
         markeredgecolor='purple',
         markeredgewidth=2
     )
 
-    plt.title(fr'DNN (PReLU) - Loss vs. Number of Epoch for ({y.name})', fontsize=24, fontweight='bold')
-    plt.xlabel('Epoch', fontsize=20, fontweight='bold')
-    plt.ylabel('Loss', fontsize=20, fontweight='bold')
-    plt.legend(fontsize=18)
+    plt.title(fr'DNN (PReLU) - Loss vs. Number of Epoch for ({y.name})', fontsize=20)
+    plt.xlabel('Epoch', fontsize=20)
+    plt.ylabel('Loss', fontsize=20)
+    plt.legend(fontsize=18, facecolor='white', edgecolor='black', frameon=True)
     plt.xticks(fontsize=20)
     plt.yticks(fontsize=20)
+    plt.tick_params(axis='both', which='both', direction='in', labelsize=17, length=8,
+               top=True, bottom=True, left=True, right=True, width=1.5)
+    plt.tick_params(axis='both', which='minor', direction='in',
+               length=4, width=1.5, top=True, bottom=True, left=True, right=True)
+    ax = plt.gca()  # get current axes
+    ax.minorticks_on()
+    ax.xaxis.set_minor_locator(AutoMinorLocator(10))
+    ax.yaxis.set_minor_locator(AutoMinorLocator(8))
     plt.grid(False)
     plt.tight_layout()
 
     # Saving the figure
-    plt.savefig(os.path.join(save_file_path, savename + '_DNN_loss_vs_epoch.jpg'), dpi=400)
-
+    plt.savefig(os.path.join(save_file_path, savename + '_DNN_loss_vs_epoch.jpg'), dpi=800)
+    # --- Save losses to Excel ---
+    df = pd.DataFrame({
+        "Epoch": list(range(1, len(loss_data) + 1)),
+        "Training_Loss": loss_data,
+        "Validation_Loss": val_loss_data if val_loss_data else [None] * len(loss_data)
+    })
     
+    excel_path = os.path.join(save_file_path, savename + '_DNN_loss_vs_epoch.xlsx')
+    df.to_excel(excel_path, index=False)
+
+    print(f"Saved training/validation loss values to {excel_path}")
+
+################################################################
+# Function to perform 5-fold CV with the DNN predicted results
+################################################################
+def plot_5fold_cv(model, X, y):
+
+    kf = KFold(n_splits=5, shuffle=True, random_state=42)
+    Lc_scores, r2_scores, rmse_scores = [], [], []
+
+    for train_idx, test_idx in kf.split(X):
+        X_train, X_test = X[train_idx], X[test_idx]
+        y_train, y_test = y[train_idx], y[test_idx]
+
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+
+        Lc_scores.append(custom_loss(y_test, y_pred))
+        r2_scores.append(r2_score(y_test, y_pred))
+        rmse_scores.append(root_mean_squared_error(y_test, y_pred))
+
+    # ---- Save results to Excel ----
+    results_df = pd.DataFrame({
+        "Fold": np.arange(1, 6),
+        "R² Score": r2_scores,
+        "Custom Loss (Lc)": Lc_scores,
+        "RMSE": rmse_scores
+    })
+    results_df.to_excel(os.path.join(save_file_path, savename + '_DNN_5_fold_CV_results.xlsx'), index=True)
+
+    # Plot
+    folds = np.arange(1, 6)
+    width = 0.25
+    fig, ax1 = plt.subplots(figsize=(8, 5.5), constrained_layout=True)
+
+    # Left axis: R² and Lc
+    ax1.bar(folds - width, r2_scores, width,
+            color='royalblue', edgecolor='black', label='R² Score')
+    ax1.bar(folds, Lc_scores, width,
+            color='darkgreen', edgecolor='black', label='Custom Loss')
+    ax1.set_xlabel('Fold Number', fontsize=20)
+    ax1.set_ylabel(fr'R$^2$ Score / $L_c$', fontsize=20)
+    ax1.tick_params(axis='y', labelcolor='black')
+
+    # Right axis: RMSE
+    ax2 = ax1.twinx()
+    ax2.bar(folds + width, rmse_scores, width,
+            color='red', edgecolor='black', label='RMSE')
+    ax2.set_ylabel('Root Mean Square Error', fontsize=20, color='black', labelpad=10)
+    ax2.tick_params(axis='y', labelcolor='black')
+
+    ax1.tick_params(axis='both', which='both', direction='in', labelsize=17,
+                    length=8, top=True, bottom=True, left=True, right=False, width=1.5)
+    ax1.tick_params(axis='both', which='minor', direction='in',
+                    length=4, width=1.5, top=True, bottom=True, left=True, right=False)
+
+    # Right axis (RMSE): ticks only on right
+    ax2.tick_params(axis='both', which='both', direction='in', labelsize=17,
+                    length=8, top=True, bottom=True, left=False, right=True, width=1.5)
+    ax2.tick_params(axis='both', which='minor', direction='in',
+                    length=4, width=1.5, top=True, bottom=True, left=False, right=True)
+
+    # Minor ticks only for y-axes, no x-axis minor ticks
+    ax1.yaxis.set_minor_locator(AutoMinorLocator(10))
+    ax2.yaxis.set_minor_locator(AutoMinorLocator(10))
+
+    # Shared legend above the graph in 3 columns
+    handles1, labels1 = ax1.get_legend_handles_labels()
+    handles2, labels2 = ax2.get_legend_handles_labels()
+    handles = handles1 + handles2
+    labels = labels1 + labels2
+    fig.legend(handles, labels, loc='upper center',
+               bbox_to_anchor=(0.5, 0.99), ncol=3,
+               frameon=True, facecolor='white', edgecolor='black', fontsize=15)
+    fig.tight_layout(rect=[0, 0, 1, 0.9])
+    plt.savefig(os.path.join(save_file_path, savename + '_DNN_5_fold_CV.jpg'), dpi=800)
+    plt.show()
+
 ###################
 # Model execution
 ###################
+print(f"{BLUE_TEXT} Starting DNN...{RESET_TEXT}")
+print("\n")
 
 start_time_total_DNN = time.time() 
 
@@ -1304,8 +1524,40 @@ save_results_to_excel(y_train, predicted_train, y_test, predicted_test, huber_lo
 # Plotting the prediction from DNN and saving it in '.jpg' format.
 plot_results(elapsed_time_1, elapsed_time_2, elapsed_time_3, elapsed_time_total_DNN, X_scaled, y_train, predicted_train, y_test, predicted_test, huber_loss_train_DNN, huber_loss_test_DNN, rmse_train_DNN, rmse_test_DNN, quantile_loss_train_DNN, quantile_loss_test_DNN, R2_score_train_DNN, R2_score_test_DNN, custom_loss_train_DNN, custom_loss_test_DNN, scaler_X_NN, scaler_y_NN, 'Input_vs_flux', savename)
 
+# Perform 5-fold CV
+plot_5fold_cv(model, X_scaled, y_scaled)
+
 # Plot Loss vs. Epoch(Iteration) for DNN AdamW optimization in '.jpg' format.
 plot_loss(history, savename)
+
+# Saving model in json format
+metadata_list = []
+
+# Save model + scalers + metadata
+
+save_model_with_metadata(
+        model, 
+        scaler_X_NN, 
+        scaler_y_NN, 
+        save_file_path,
+        savename,
+        model_name="DeepModel",
+        input_features=X.columns, 
+        output_features=[y.name],
+        X_data=X.values, 
+        y_data=y.values
+        )    
+
+
+# Load the saved metadata json for Excel export
+with open(os.path.join(save_file_path, savename, f"{savename}_metadata.json")) as f:
+    metadata = json.load(f)
+metadata_list.append(metadata)
+
+# Save all metadata to Excel
+save_metadata_to_excel(save_file_path, savename, metadata_list)
+
+print(f"{GREEN_TEXT}DNN training completed successfully!{RESET_TEXT}")
 
 end_time_total = time.time()
 elapsed_time_total = end_time_total - start_time_total
