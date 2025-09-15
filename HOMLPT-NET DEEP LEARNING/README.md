@@ -12,11 +12,12 @@ This framework incorporates:
 - Automated preprocessing, including missing value checks and scaling
 - Dynamic train-test split based on data availability
 - Dynamic feature-target identification
-- Custom loss and metric functions for regression tasks (with Huber, Quantile, RMSE, R², Composite Loss)
+- Custom loss and metric functions for regression tasks (with Huber, Quantile, RMSE, R², Custom Loss)
 - Flexible data saving strategy for reproducibility and tracking
 - Compatibility with Neural Architecture Search (NAS) for future extensions
 - Support for both manual and GridSearchCV-based hyperparameter selection 
 - Deep neural network with configurable hidden layers and PReLU activation
+- Deep neural network is validated with 5-fold Cross-validation and overfitting is counterd with early stopping
 - Result saving (Excels, figures, scalers, model weights)
 - Visual summaries of model accuracy and training behavior
 
